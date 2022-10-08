@@ -12,30 +12,35 @@ namespace SpotifyDiscordRPC
         private static void Main(string[] args)
         {
             // Make and initialize 1 client per pipe (10)
-            //foreach (var i in Enumerable.Range(0, 10))
-            //{
-            DiscordRpcClient client = new DiscordRpcClient("1026857154214367312", -1)
+            foreach (var i in Enumerable.Range(0, 10))
             {
-                ShutdownOnly = false,
-                SkipIdenticalPresence = true
-            };
+                DiscordRpcClient client = new DiscordRpcClient("1026857154214367312", i)
+                {
+                    ShutdownOnly = false,
+                    SkipIdenticalPresence = true
+                };
 
-            client.ConnectionEstablishedEvent += (sender, e) =>
-            {
-                Console.WriteLine("Pipe connected: {0}", e.ConnectedPipe);
-            };
+                client.ConnectionEstablishedEvent += (sender, e) =>
+                {
+                    Console.WriteLine("Pipe connected: {0}", e.ConnectedPipe);
+                };
 
-            client.ConnectionFailedEvent += (sender, e) =>
-            {
-                Console.WriteLine("Pipe connection failed: {0}", e.FailedPipe);
-            };
+                client.ConnectionFailedEvent += (sender, e) =>
+                {
+                    Console.WriteLine("Pipe connection failed: {0}", e.FailedPipe);
+                };
 
-            client.ReadyEvent += (sender, e) => { Console.WriteLine("Received Ready from user {0}", e.User.Username); };
+                client.ReadyEvent += (sender, e) =>
+                {
+                    Console.WriteLine("Received Ready from user {0}", e.User.Username);
+                };
 
-            client.Initialize();
+                client.Initialize();
 
-            //_rpcClients.Add(client);
-            //}
+                _rpcClients.Add(client);
+
+                Thread.Sleep(500);
+            }
 
             // Initialize memory client
             InitializeMemoryClient();
@@ -44,67 +49,70 @@ namespace SpotifyDiscordRPC
             new Thread(() =>
             {
                 while (true)
-                {
-                    //foreach (var discordRpcClient in _rpcClients)
-                    try
+                    foreach (var client in _rpcClients)
                     {
-                        if (_spotifyMemoryClient != null)
-                            if (_spotifyMemoryClient.IsPlaying && _spotifyMemoryClient.CurrentSong != null)
-                            {
-                                var presence = new RichPresence
+                        try
+                        {
+                            if (_spotifyMemoryClient != null)
+                                if (_spotifyMemoryClient.IsPlaying && _spotifyMemoryClient.CurrentSong != null)
                                 {
-                                    Details = _spotifyMemoryClient.CurrentSong.Title,
-                                    State = string.Join(", ", _spotifyMemoryClient.CurrentSong.Artists),
-                                };
-
-                                if (!_spotifyMemoryClient.CurrentSong.IsLocalFile)
-                                {
-                                    presence.Assets = new Assets
+                                    var presence = new RichPresence
                                     {
-                                        LargeImageKey = _spotifyMemoryClient.CurrentSong.CoverArtURL,
-                                        LargeImageText = "Spotify Discord RPC by V3rzeT",
-                                        SmallImageKey = "spotify-icon",
-                                        SmallImageText = "Volume: " + String.Format("{0:0}%", _spotifyMemoryClient.PlayerVolume)
+                                        Details = _spotifyMemoryClient.CurrentSong.Title,
+                                        State = string.Join(", ", _spotifyMemoryClient.CurrentSong.Artists)
                                     };
 
-                                    presence.Buttons = new List<Button>
+                                    if (!_spotifyMemoryClient.CurrentSong.IsLocalFile)
                                     {
-                                        new()
+                                        presence.Assets = new Assets
                                         {
-                                            Label = "Open in Spotify", Url = _spotifyMemoryClient.CurrentSong.URL
-                                        }
-                                    }.ToArray();
+                                            LargeImageKey = _spotifyMemoryClient.CurrentSong.CoverArtURL,
+                                            LargeImageText = "Spotify Discord RPC by V3rzeT",
+                                            SmallImageKey = "spotify-icon",
+                                            SmallImageText = "Volume: " + string.Format("{0:0}%",
+                                                _spotifyMemoryClient.PlayerVolume)
+                                        };
+
+                                        presence.Buttons = new List<Button>
+                                        {
+                                            new()
+                                            {
+                                                Label = "Open in Spotify", Url = _spotifyMemoryClient.CurrentSong.URL
+                                            }
+                                        }.ToArray();
+                                    }
+                                    else
+                                    {
+                                        presence.Assets = new Assets
+                                        {
+                                            LargeImageKey =
+                                                "https://i.bcow.xyz/uZJivyf.png", // Using an image that I uploaded ("spotify-musicthumb") doesn't work at all, so I had to upload it to imgur ;-;
+                                            LargeImageText = "Spotify Discord RPC by V3rzeT",
+                                            SmallImageKey = "spotify-icon",
+                                            SmallImageText = "Volume: " + string.Format("{0:0}%",
+                                                _spotifyMemoryClient.PlayerVolume)
+                                        };
+                                    }
+
+                                    // Set elapsed time
+                                    if (_spotifyMemoryClient.PlayerCurrentTime.HasValue)
+                                        presence.Timestamps = new Timestamps(DateTime.Now.ToUniversalTime()
+                                            .Subtract(_spotifyMemoryClient.PlayerCurrentTime.Value));
+
+                                    // Set presence
+                                    client.SetPresence(presence);
                                 }
                                 else
                                 {
-                                    presence.Assets = new Assets
-                                    {
-                                        LargeImageKey = "spotify-default-musicthumb", // Wasn't working for like a day or so, so here, just in case: https://i.bcow.xyz/uZJivyf.png
-                                        LargeImageText = "Spotify Discord RPC by V3rzeT",
-                                        SmallImageKey = "spotify-icon",
-                                        SmallImageText = "Volume: " + String.Format("{0:0}%", _spotifyMemoryClient.PlayerVolume)
-                                    };
+                                    client.ClearPresence();
                                 }
+                        }
+                        catch
+                        {
+                        }
 
-                                // Set elapsed time
-                                if (_spotifyMemoryClient.PlayerCurrentTime.HasValue)
-                                    presence.Timestamps = new Timestamps(DateTime.Now.ToUniversalTime()
-                                        .Subtract(_spotifyMemoryClient.PlayerCurrentTime.Value));
-
-                                // Set presence
-                                client.SetPresence(presence);
-                            }
-                            else
-                            {
-                                client.ClearPresence();
-                            }
+                        Thread.Sleep(1000);
                     }
-                    catch
-                    {
-                    }
-
-                    Thread.Sleep(1000);
-                }
             }).Start();
 
             Console.ReadLine();
